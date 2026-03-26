@@ -64,14 +64,22 @@ public class SplitterFunctionConfiguration {
 		QueueChannel outputChannel = new QueueChannel();
 		messageSplitter.setOutputChannel(outputChannel);
 
-		return (messageFlux) -> messageFlux.flatMapIterable((message) -> {
-			messageSplitter.handleMessage(message);
+		return (messageFlux) -> messageFlux.concatMap((message) -> {
+			Object payload = message.getPayload();
+			Message<?> toSplit = message;
+			if (payload instanceof byte[] bytes) {
+				toSplit = org.springframework.messaging.support.MessageBuilder
+					.withPayload(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+					.copyHeaders(message.getHeaders())
+					.build();
+			}
+			messageSplitter.handleMessage(toSplit);
 			List<Message<?>> results = new ArrayList<>();
 			Message<?> result;
 			while ((result = outputChannel.receive(0)) != null) {
 				results.add(result);
 			}
-			return results;
+			return Flux.fromIterable(results);
 		});
 	}
 
