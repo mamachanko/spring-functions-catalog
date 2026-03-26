@@ -16,10 +16,12 @@
 
 package org.springframework.cloud.fn.splitter;
 
-import java.util.List;
+import java.time.Duration;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -28,20 +30,18 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.support.GenericMessage;
 import org.springframework.test.annotation.DirtiesContext;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @SpringBootTest(properties = "splitter.expression=payload.split(',')")
 @DirtiesContext
 public class SplitterFunctionApplicationTests {
 
 	@Autowired
-	Function<Message<?>, List<Message<?>>> splitter;
+	Function<Flux<Message<?>>, Flux<Message<?>>> splitter;
 
 	@Test
 	public void testExpressionSplitter() {
-		List<Message<?>> results = this.splitter.apply(new GenericMessage<>("hello,world"));
-		List<String> payloads = results.stream().map(Message::getPayload).map(Object::toString).toList();
-		assertThat(payloads).containsExactly("hello", "world");
+		Flux<Message<?>> messageFlux = this.splitter.apply(Flux.just(new GenericMessage<>("hello,world")));
+		Flux<String> payloads = messageFlux.map(Message::getPayload).map(Object::toString);
+		StepVerifier.create(payloads).expectNext("hello", "world").thenCancel().verify(Duration.ofSeconds(30));
 	}
 
 	@SpringBootApplication

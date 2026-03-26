@@ -16,11 +16,13 @@
 
 package org.springframework.cloud.fn.splitter;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Duration;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
+import reactor.test.StepVerifier;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -29,38 +31,45 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.support.GenericMessage;
 import org.springframework.test.annotation.DirtiesContext;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * Tests that the splitter function correctly handles multiple messages invoked
- * sequentially, simulating how a real binder delivers messages one at a time.
+ * Tests that the splitter function correctly handles multiple messages pushed through a
+ * shared Flux, simulating how a real binder (e.g., RabbitMQ) delivers messages
+ * continuously through a single reactive pipeline.
  */
 @SpringBootTest(properties = "splitter.expression=payload.split(' ')")
 @DirtiesContext
 public class SplitterFunctionMultiMessageTests {
 
 	@Autowired
-	Function<Message<?>, List<Message<?>>> splitter;
+	Function<Flux<Message<?>>, Flux<Message<?>>> splitter;
 
 	@Test
-	public void splitsMultipleMessagesSequentially() {
-		List<String> allResults = new ArrayList<>();
+	public void splitsSecondMessageAfterFirst() {
+		Sinks.Many<Message<?>> sink = Sinks.many().unicast().onBackpressureBuffer();
 
-		List<Message<?>> first = this.splitter.apply(new GenericMessage<>("hello world"));
-		first.stream().map(Message::getPayload).map(Object::toString).forEach(allResults::add);
+		Flux<Message<?>> output = this.splitter.apply(sink.asFlux());
 
-		List<Message<?>> second = this.splitter.apply(new GenericMessage<>("foo bar baz"));
-		second.stream().map(Message::getPayload).map(Object::toString).forEach(allResults::add);
+		Flux<String> payloads = output.map(Message::getPayload).map(Object::toString);
 
-		assertThat(allResults).containsExactly("hello", "world", "foo", "bar", "baz");
+		StepVerifier.create(payloads)
+			.then(() -> sink.tryEmitNext(new GenericMessage<>("hello world")))
+			.expectNext("hello", "world")
+			.then(() -> sink.tryEmitNext(new GenericMessage<>("foo bar baz")))
+			.expectNext("foo", "bar", "baz")
+			.then(sink::tryEmitComplete)
+			.expectComplete()
+			.verify(Duration.ofSeconds(10));
 	}
 
 	@Test
 	public void splitsWoodchuckSentence() {
-		String sentence = "How much wood would a woodchuck chuck if a woodchuck could chuck wood";
-		List<Message<?>> results = this.splitter.apply(new GenericMessage<>(sentence));
-		List<String> words = results.stream().map(Message::getPayload).map(Object::toString).toList();
-		assertThat(words).containsExactly(sentence.split(" "));
+		Flux<Message<?>> output = this.splitter
+			.apply(Flux.just(new GenericMessage<>("How much wood would a woodchuck chuck")));
+		Flux<String> payloads = output.map(Message::getPayload).map(Object::toString);
+		StepVerifier.create(payloads)
+			.expectNext("How", "much", "wood", "would", "a", "woodchuck", "chuck")
+			.thenCancel()
+			.verify(Duration.ofSeconds(10));
 	}
 
 	@SpringBootApplication

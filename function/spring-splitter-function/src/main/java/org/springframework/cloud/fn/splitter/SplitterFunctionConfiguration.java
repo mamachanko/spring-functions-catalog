@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
+import reactor.core.publisher.Flux;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.AnyNestedCondition;
@@ -48,8 +50,7 @@ import org.springframework.messaging.Message;
 public class SplitterFunctionConfiguration {
 
 	@Bean
-	@SuppressWarnings("unchecked")
-	public Function<Message<?>, List<Message<?>>> splitterFunction(
+	public Function<Flux<Message<?>>, Flux<Message<?>>> splitterFunction(
 			@Qualifier("expressionSplitter") Optional<AbstractMessageSplitter> expressionSplitter,
 			@Qualifier("fileSplitter") Optional<AbstractMessageSplitter> fileSplitter,
 			@Qualifier("defaultSplitter") Optional<AbstractMessageSplitter> defaultSplitter,
@@ -63,7 +64,7 @@ public class SplitterFunctionConfiguration {
 		QueueChannel outputChannel = new QueueChannel();
 		messageSplitter.setOutputChannel(outputChannel);
 
-		return (message) -> {
+		return (messageFlux) -> messageFlux.flatMapIterable((message) -> {
 			messageSplitter.handleMessage(message);
 			List<Message<?>> results = new ArrayList<>();
 			Message<?> result;
@@ -71,7 +72,7 @@ public class SplitterFunctionConfiguration {
 				results.add(result);
 			}
 			return results;
-		};
+		});
 	}
 
 	@Bean
