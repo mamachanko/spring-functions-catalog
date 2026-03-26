@@ -17,10 +17,10 @@
 package org.springframework.cloud.fn.splitter;
 
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-
-import reactor.core.publisher.Flux;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -30,7 +30,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
-import org.springframework.integration.channel.FluxMessageChannel;
+import org.springframework.integration.channel.QueueChannel;
 import org.springframework.integration.file.splitter.FileSplitter;
 import org.springframework.integration.splitter.AbstractMessageSplitter;
 import org.springframework.integration.splitter.DefaultMessageSplitter;
@@ -48,7 +48,8 @@ import org.springframework.messaging.Message;
 public class SplitterFunctionConfiguration {
 
 	@Bean
-	public Function<Flux<Message<?>>, Flux<Message<?>>> splitterFunction(
+	@SuppressWarnings("unchecked")
+	public Function<Message<?>, List<Message<?>>> splitterFunction(
 			@Qualifier("expressionSplitter") Optional<AbstractMessageSplitter> expressionSplitter,
 			@Qualifier("fileSplitter") Optional<AbstractMessageSplitter> fileSplitter,
 			@Qualifier("defaultSplitter") Optional<AbstractMessageSplitter> defaultSplitter,
@@ -59,11 +60,18 @@ public class SplitterFunctionConfiguration {
 			.get();
 
 		messageSplitter.setApplySequence(splitterFunctionProperties.isApplySequence());
-		FluxMessageChannel inputChannel = new FluxMessageChannel();
-		inputChannel.subscribe(messageSplitter);
-		FluxMessageChannel outputChannel = new FluxMessageChannel();
+		QueueChannel outputChannel = new QueueChannel();
 		messageSplitter.setOutputChannel(outputChannel);
-		return (messageFlux) -> Flux.from(outputChannel).doOnRequest((__) -> inputChannel.subscribeTo(messageFlux));
+
+		return (message) -> {
+			messageSplitter.handleMessage(message);
+			List<Message<?>> results = new ArrayList<>();
+			Message<?> result;
+			while ((result = outputChannel.receive(0)) != null) {
+				results.add(result);
+			}
+			return results;
+		};
 	}
 
 	@Bean
