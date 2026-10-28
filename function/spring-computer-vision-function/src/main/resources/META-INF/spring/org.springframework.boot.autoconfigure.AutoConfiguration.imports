@@ -1,1 +1,2 @@
+ai.djl.spring.configuration.DjlAutoConfiguration
 org.springframework.cloud.fn.computer.vision.ComputerVisionFunctionConfiguration

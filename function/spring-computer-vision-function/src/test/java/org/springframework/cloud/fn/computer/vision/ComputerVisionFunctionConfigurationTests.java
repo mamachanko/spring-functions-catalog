@@ -35,14 +35,21 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.cloud.fn.computer.vision.translator.TensorflowSavedModelObjectDetectionTranslatorFactory;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Tests for computer vision auto-configuration and inference.
+ *
+ * @author Max Brauer
+ */
 public class ComputerVisionFunctionConfigurationTests {
 
 	private ApplicationContextRunner applicationContextRunner;
@@ -109,7 +116,7 @@ public class ComputerVisionFunctionConfigurationTests {
 	@Test
 	@DisabledOnOs(OS.WINDOWS)
 	public void yolov8Detection() {
-		applicationContextRunner.withPropertyValues(
+		new ApplicationContextRunner().withUserConfiguration(TestApplication.class).withPropertyValues(
 		// @formatter:off
 					"computer.vision.function.augment-enabled=true",
 					"djl.application-type=" + ApplicationType.OBJECT_DETECTION,
@@ -327,6 +334,12 @@ public class ComputerVisionFunctionConfigurationTests {
 
 				assertThat(JsonHelper.toJoints(ssJson)).isNotNull();
 			});
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@EnableAutoConfiguration
+	static class TestApplication {
+
 	}
 
 }
