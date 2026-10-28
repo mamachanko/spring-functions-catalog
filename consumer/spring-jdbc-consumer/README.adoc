@@ -65,6 +65,7 @@ If no row matches, the consumer does not insert a row.
 The consumer does not return query results or affected-row counts.
 Database and parameter-binding failures during a synchronous write propagate to the caller.
 An idle-timeout flush runs asynchronously; its errors do not return to an earlier consumer call.
+With the default scheduler configuration, these errors are logged.
 
 === PostgreSQL upsert
 
@@ -99,6 +100,8 @@ jdbc.consumer.columns=id,name
 jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name) ON DUPLICATE KEY UPDATE name=:name
 ----
 
+Both occurrences of `:name` receive the same mapped value.
+
 The consumer does not translate SQL between database types.
 Choose SQL, constraints, and update rules for the target database.
 
@@ -114,6 +117,8 @@ Buffered messages are held in memory.
 By default, the consumer does not initialize the database.
 Set `jdbc.consumer.initialize` to the location of a SQL script to initialize a schema.
 The value `true` drops and recreates `jdbc.consumer.table-name` with `VARCHAR` columns from the mapping names.
+This happens even when a configured query targets a different table.
+Check `jdbc.consumer.table-name` before enabling this option; any data in that table is deleted.
 This generated schema has no primary key or unique constraint.
 Use a database migration or a custom initialization script for an upsert schema.
 
@@ -135,7 +140,8 @@ See link:src/main/java/org/springframework/cloud/fn/consumer/jdbc/JdbcConsumerPr
 == Tests
 
 The link:src/test/java/org/springframework/cloud/fn/consumer/jdbc[test suite] covers generated inserts, configured SQL, and PostgreSQL and MySQL upserts.
-The upsert tests require Docker and run with the module's `check` task:
+The upsert tests use Docker and run with the module's `check` task.
+They are skipped when Docker is unavailable:
 
 [source,bash]
 ----

@@ -16,14 +16,18 @@
 
 package org.springframework.cloud.fn.consumer.jdbc;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +36,7 @@ import org.springframework.messaging.support.MessageBuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.awaitility.Awaitility.await;
 
 /**
  * @author Max Brauer
@@ -46,6 +51,7 @@ class JdbcQueryTests {
 	@ParameterizedTest
 	@ValueSource(strings = { "", "   " })
 	void blankQueryGeneratesInsert(String query) {
+		// String property pairs trim whitespace; use a map to retain the blank query.
 		this.contextRunner.withPropertyValues("jdbc.consumer.initialize=true")
 			.withInitializer((context) -> TestPropertyValues.of(Map.of("jdbc.consumer.query", query)).applyTo(context))
 			.run((context) -> {
@@ -59,10 +65,10 @@ class JdbcQueryTests {
 
 	@Test
 	void updateUsesNamedParametersFromHeadersAndPayloadWithoutInsertFallback() {
-		this.contextRunner
-			.withPropertyValues("jdbc.consumer.columns=key:headers['personId'],personName:payload",
-					"jdbc.consumer.table-name=unused",
-					"jdbc.consumer.query=UPDATE people SET name=:personName WHERE id=:key")
+		this.contextRunner.withPropertyValues("jdbc.consumer.columns=key:headers['personId'],personName:payload",
+				// Configured SQL selects its table independently of table-name.
+				"jdbc.consumer.table-name=unused",
+				"jdbc.consumer.query=UPDATE people SET name=:personName WHERE id=:key")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				jdbc.execute("CREATE TABLE people (id INTEGER PRIMARY KEY, name VARCHAR(40))");
@@ -85,6 +91,26 @@ class JdbcQueryTests {
 				assertThatExceptionOfType(InvalidDataAccessApiUsageException.class)
 					.isThrownBy(() -> consumer.accept(MessageBuilder.withPayload("hello").build()))
 					.withStackTraceContaining("missing");
+				assertThat(context.getBean(JdbcTemplate.class)
+					.queryForObject("SELECT count(*) FROM messages", Integer.class)).isZero();
+			});
+	}
+
+	@Test
+	@ExtendWith(OutputCaptureExtension.class)
+	void idleTimeoutWriteFailureIsLogged(CapturedOutput output) {
+		this.contextRunner
+			.withPropertyValues("jdbc.consumer.initialize=true", "jdbc.consumer.batch-size=10",
+					"jdbc.consumer.idle-timeout=100",
+					"jdbc.consumer.query=INSERT INTO missing_table (payload) VALUES (:payload)")
+			.run((context) -> {
+				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
+				// The call returns before the partial batch is flushed and the SQL fails.
+				consumer.accept(MessageBuilder.withPayload("hello").build());
+				await().atMost(Duration.ofSeconds(10))
+					.untilAsserted(
+							() -> assertThat(output.getAll()).contains("Unexpected error occurred in scheduled task",
+									"INSERT INTO missing_table (payload) VALUES (?)"));
 				assertThat(context.getBean(JdbcTemplate.class)
 					.queryForObject("SELECT count(*) FROM messages", Integer.class)).isZero();
 			});

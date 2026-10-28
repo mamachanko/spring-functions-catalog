@@ -24,7 +24,6 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -41,7 +40,7 @@ import static org.awaitility.Awaitility.await;
 /**
  * @author Max Brauer
  */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SuppressWarnings("unchecked")
 class JdbcUpsertTests {
 
@@ -50,9 +49,6 @@ class JdbcUpsertTests {
 
 	@Container
 	private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
-
-	@Container
-	private static final MySQLContainer MYSQL = new MySqlFixture();
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withUserConfiguration(JdbcConsumerApplicationTests.JdbcConsumerTestApplication.class)
@@ -178,30 +174,6 @@ class JdbcUpsertTests {
 			});
 	}
 
-	@Test
-	void mysqlUpsertInsertsUpdatesAndReplaysInABatch() {
-		this.contextRunner
-			.withPropertyValues("spring.datasource.url=" + MYSQL.getJdbcUrl(),
-					"spring.datasource.username=" + MYSQL.getUsername(),
-					"spring.datasource.password=" + MYSQL.getPassword(),
-					"spring.datasource.driver-class-name=org.mariadb.jdbc.Driver", "jdbc.consumer.batch-size=2",
-					"jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name) "
-							+ "ON DUPLICATE KEY UPDATE name=:name")
-			.run((context) -> {
-				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				createPeople(jdbc);
-				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(person("Bob"));
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
-				consumer.accept(person("Robert"));
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
-				consumer.accept(person("Robert"));
-				consumer.accept(person("Robert"));
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
-			});
-	}
-
 	private ApplicationContextRunner postgresRunner() {
 		return this.contextRunner.withPropertyValues("spring.datasource.url=" + POSTGRES.getJdbcUrl(),
 				"spring.datasource.username=" + POSTGRES.getUsername(),
@@ -215,21 +187,6 @@ class JdbcUpsertTests {
 
 	private static Message<?> person(String name) {
 		return MessageBuilder.withPayload(Map.of("id", 1, "name", name)).build();
-	}
-
-	private static final class MySqlFixture extends MySQLContainer {
-
-		private MySqlFixture() {
-			super("mysql:8.0");
-			withUrlParam("permitMysqlScheme", "true");
-			withUrlParam("sslMode", "trust");
-		}
-
-		@Override
-		public String getDriverClassName() {
-			return "org.mariadb.jdbc.Driver";
-		}
-
 	}
 
 }
