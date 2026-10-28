@@ -26,6 +26,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Debezium engine auto-configuration properties.
  *
  * @author Christian Tzolov
+ * @author Max Brauer
  * @author Artem Bilan
  */
 @ConfigurationProperties("debezium")
@@ -122,6 +123,8 @@ public class DebeziumProperties {
 	 */
 	public Properties getDebeziumNativeConfiguration() {
 		Properties outProps = new Properties();
+		// Retain Kafka Connect's pre-4.2 default for embedded engines.
+		outProps.setProperty("bootstrap.servers", "localhost:9092");
 		outProps.putAll(getProperties());
 		return outProps;
 	}
