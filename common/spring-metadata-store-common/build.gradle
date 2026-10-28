@@ -4,6 +4,8 @@ ext{
 }
 
 dependencies {
+    testImplementation project(':spring-function-test-support')
+
     optionalApi 'org.springframework.integration:spring-integration-redis'
     optionalApi 'org.springframework.boot:spring-boot-starter-data-redis'
     optionalApi 'org.springframework.integration:spring-integration-mongodb'

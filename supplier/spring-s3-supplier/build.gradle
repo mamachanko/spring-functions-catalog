@@ -1,4 +1,6 @@
 dependencies {
+    testImplementation project(':spring-function-test-support')
+
     api project(':spring-aws-s3-common')
     api project(':spring-file-common')
     api project(':spring-metadata-store-common')
