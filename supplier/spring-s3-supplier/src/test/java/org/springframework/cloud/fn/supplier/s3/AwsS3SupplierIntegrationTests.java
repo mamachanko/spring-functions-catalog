@@ -23,23 +23,24 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-import io.awspring.cloud.s3.integration.S3InboundFileSynchronizingMessageSource;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.cloud.fn.test.support.aws.MotoTestContainerSupport;
+import org.springframework.cloud.fn.test.support.aws.MotoContainer;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 
 /**
  * Verify S3 supplier auto-configuration, downloads and listings against Moto.
@@ -47,10 +48,15 @@ import static org.awaitility.Awaitility.await;
  * @author Max Brauer
  */
 @Tag("integration")
-public class AwsS3SupplierIntegrationTests implements MotoTestContainerSupport {
+@Testcontainers(disabledWithoutDocker = true)
+public class AwsS3SupplierIntegrationTests {
+
+	@Container
+	static final MotoContainer MOTO_CONTAINER = new MotoContainer();
 
 	@Test
 	@Timeout(60)
+	@SuppressWarnings("unchecked")
 	void downloadAndFilterDuplicates(@TempDir Path directory) {
 		String bucket = "sfc-supplier-" + UUID.randomUUID();
 		contextRunner(bucket).withPropertyValues("s3.supplier.local-dir=" + directory).run((context) -> {
@@ -59,14 +65,15 @@ public class AwsS3SupplierIntegrationTests implements MotoTestContainerSupport {
 			client.createBucket((builder) -> builder.bucket(bucket));
 			byte[] expected = "SFC S3 supplier download".getBytes(StandardCharsets.UTF_8);
 			client.putObject((builder) -> builder.bucket(bucket).key("download.txt"), RequestBody.fromBytes(expected));
-			S3InboundFileSynchronizingMessageSource source = context.getBean("s3MessageSource",
-					S3InboundFileSynchronizingMessageSource.class);
-			source.start();
+			Supplier<Flux<Message<?>>> supplier = (Supplier<Flux<Message<?>>>) context.getBean("s3Supplier");
 
-			await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(source.receive()).isNotNull());
+			StepVerifier.create(supplier.get())
+				.assertNext((message) -> assertThat(message.getPayload()).isEqualTo(expected))
+				.expectNoEvent(Duration.ofSeconds(2))
+				.thenCancel()
+				.verify(Duration.ofSeconds(15));
 
 			assertThat(Files.readAllBytes(directory.resolve("download.txt"))).isEqualTo(expected);
-			assertThat(source.receive()).isNull();
 		});
 	}
 
@@ -91,7 +98,7 @@ public class AwsS3SupplierIntegrationTests implements MotoTestContainerSupport {
 
 	private ApplicationContextRunner contextRunner(String bucket) {
 		return new ApplicationContextRunner().withUserConfiguration(TestApplication.class)
-			.withPropertyValues(MotoTestContainerSupport.awsProperties())
+			.withPropertyValues(MOTO_CONTAINER.awsProperties())
 			.withPropertyValues("s3.supplier.remote-dir=" + bucket);
 	}
 

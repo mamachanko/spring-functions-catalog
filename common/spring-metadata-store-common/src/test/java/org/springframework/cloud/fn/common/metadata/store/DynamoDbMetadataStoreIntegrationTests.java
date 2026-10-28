@@ -23,12 +23,14 @@ import io.awspring.cloud.dynamodb.DynamoDbMetadataStore;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.cloud.fn.test.support.aws.MotoTestContainerSupport;
+import org.springframework.cloud.fn.test.support.aws.MotoContainer;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +41,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Max Brauer
  */
 @Tag("integration")
-public class DynamoDbMetadataStoreIntegrationTests implements MotoTestContainerSupport {
+@Testcontainers(disabledWithoutDocker = true)
+public class DynamoDbMetadataStoreIntegrationTests {
+
+	@Container
+	static final MotoContainer MOTO_CONTAINER = new MotoContainer();
 
 	@Test
 	@Timeout(60)
@@ -48,13 +54,13 @@ public class DynamoDbMetadataStoreIntegrationTests implements MotoTestContainerS
 		new ApplicationContextRunner().withUserConfiguration(TestApplication.class)
 			.withClassLoader(new FilteredClassLoader("com.hazelcast", "org.apache.curator",
 					"org.springframework.data.mongodb", "org.springframework.data.redis", "org.springframework.jdbc"))
-			.withPropertyValues(MotoTestContainerSupport.awsProperties())
+			.withPropertyValues(MOTO_CONTAINER.awsProperties())
 			.withPropertyValues("metadata.store.type=dynamodb", "metadata.store.dynamo-db.table=" + table)
 			.run((context) -> {
 				assertThat(context).hasNotFailed().hasSingleBean(DynamoDbMetadataStore.class);
 				DynamoDbAsyncClient client = context.getBean(DynamoDbAsyncClient.class);
 				assertThat(client.serviceClientConfiguration().endpointOverride())
-					.contains(URI.create(MotoTestContainerSupport.endpoint()));
+					.contains(URI.create(MOTO_CONTAINER.endpoint()));
 				DynamoDbMetadataStore store = context.getBean(DynamoDbMetadataStore.class);
 
 				assertThat(store.putIfAbsent("key", "one")).isNull();

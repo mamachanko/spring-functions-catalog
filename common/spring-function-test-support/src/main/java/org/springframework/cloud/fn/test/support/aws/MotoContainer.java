@@ -18,42 +18,28 @@ package org.springframework.cloud.fn.test.support.aws;
 
 import java.time.Duration;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Testcontainers support for local AWS service tests with Moto and dummy credentials.
  *
  * @author Max Brauer
  */
-@Testcontainers(disabledWithoutDocker = true)
-public interface MotoTestContainerSupport {
+public class MotoContainer extends GenericContainer<MotoContainer> {
 
-	/**
-	 * The Moto container for local AWS API requests.
-	 */
-	GenericContainer<?> MOTO_CONTAINER = new GenericContainer<>("motoserver/moto:5.1.16").withExposedPorts(5000)
-		.waitingFor(Wait.forHttp("/moto-api/").forStatusCode(200))
-		.withStartupTimeout(Duration.ofSeconds(60));
-
-	@BeforeAll
-	static void startContainer() {
-		MOTO_CONTAINER.start();
+	public MotoContainer() {
+		super("motoserver/moto:5.1.16");
+		withExposedPorts(5000);
+		waitingFor(Wait.forHttp("/moto-api/").forStatusCode(200));
+		withStartupTimeout(Duration.ofSeconds(60));
 	}
 
-	@AfterAll
-	static void stopContainer() {
-		MOTO_CONTAINER.stop();
+	public String endpoint() {
+		return "http://" + getHost() + ":" + getMappedPort(5000);
 	}
 
-	static String endpoint() {
-		return "http://" + MOTO_CONTAINER.getHost() + ":" + MOTO_CONTAINER.getMappedPort(5000);
-	}
-
-	static String[] awsProperties() {
+	public String[] awsProperties() {
 		return new String[] { "spring.cloud.aws.credentials.access-key=testing",
 				"spring.cloud.aws.credentials.secret-key=testing", "spring.cloud.aws.region.static=us-east-1",
 				"spring.cloud.aws.endpoint=" + endpoint(), "spring.cloud.aws.s3.endpoint=" + endpoint(),

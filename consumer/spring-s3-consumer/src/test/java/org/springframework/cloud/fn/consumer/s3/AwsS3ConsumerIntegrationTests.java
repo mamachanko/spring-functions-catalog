@@ -17,26 +17,27 @@
 package org.springframework.cloud.fn.consumer.s3;
 
 import java.io.ByteArrayInputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.cloud.fn.test.support.aws.MotoTestContainerSupport;
+import org.springframework.cloud.fn.test.support.aws.MotoContainer;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 
 /**
  * Verify S3 consumer auto-configuration and uploads with real clients against Moto.
@@ -44,7 +45,11 @@ import static org.awaitility.Awaitility.await;
  * @author Max Brauer
  */
 @Tag("integration")
-public class AwsS3ConsumerIntegrationTests implements MotoTestContainerSupport {
+@Testcontainers(disabledWithoutDocker = true)
+public class AwsS3ConsumerIntegrationTests {
+
+	@Container
+	static final MotoContainer MOTO_CONTAINER = new MotoContainer();
 
 	@Test
 	@Timeout(60)
@@ -52,13 +57,13 @@ public class AwsS3ConsumerIntegrationTests implements MotoTestContainerSupport {
 	void uploadInputStream() {
 		String bucket = "sfc-consumer-" + UUID.randomUUID();
 		new ApplicationContextRunner().withUserConfiguration(TestApplication.class)
-			.withPropertyValues(MotoTestContainerSupport.awsProperties())
+			.withPropertyValues(MOTO_CONTAINER.awsProperties())
 			.withPropertyValues("s3.consumer.bucket=" + bucket, "s3.consumer.key-expression=headers.key")
 			.run((context) -> {
 				assertThat(context).hasNotFailed().hasSingleBean(S3Client.class).hasSingleBean(S3TransferManager.class);
 				S3Client client = context.getBean(S3Client.class);
 				assertThat(client.serviceClientConfiguration().endpointOverride())
-					.contains(java.net.URI.create(MotoTestContainerSupport.endpoint()));
+					.contains(URI.create(MOTO_CONTAINER.endpoint()));
 				client.createBucket((builder) -> builder.bucket(bucket));
 				byte[] expected = "SFC S3 consumer round trip".getBytes(StandardCharsets.UTF_8);
 				Consumer<Message<?>> consumer = (Consumer<Message<?>>) context.getBean("s3Consumer");
@@ -67,10 +72,8 @@ public class AwsS3ConsumerIntegrationTests implements MotoTestContainerSupport {
 					.setHeader("key", "probe.txt")
 					.build());
 
-				await().atMost(Duration.ofSeconds(20))
-					.untilAsserted(() -> assertThat(
-							client.getObjectAsBytes((builder) -> builder.bucket(bucket).key("probe.txt")).asByteArray())
-						.isEqualTo(expected));
+				assertThat(client.getObjectAsBytes((builder) -> builder.bucket(bucket).key("probe.txt")).asByteArray())
+					.isEqualTo(expected);
 			});
 	}
 
