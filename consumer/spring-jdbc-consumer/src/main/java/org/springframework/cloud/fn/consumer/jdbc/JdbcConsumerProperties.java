@@ -27,6 +27,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Eric Bottard
  * @author Artem Bilan
  * @author Oliver Flasch
+ * @author Max Brauer
  */
 @ConfigurationProperties("jdbc.consumer")
 public class JdbcConsumerProperties {
@@ -35,15 +36,21 @@ public class JdbcConsumerProperties {
 	private ShorthandMapConverter shorthandMapConverter;
 
 	/**
-	 * The name of the table to write into.
+	 * The name of the table for generated INSERT statements and initialization.
 	 */
 	private String tableName = "messages";
 
 	/**
-	 * The comma separated colon-based pairs of column names and SpEL expressions for
-	 * values to insert/update. Names are used at initialization time to issue the DDL.
+	 * The comma separated colon-based pairs of SQL parameter names and SpEL expressions.
+	 * Names are used as column names for generated INSERT statements and initialization.
 	 */
 	private String columns = "payload:payload.toString()";
+
+	/**
+	 * SQL statement to execute, with named parameters supplied by columns. When empty or
+	 * blank, an INSERT statement is generated from tableName and columns.
+	 */
+	private String query = "";
 
 	/**
 	 * 'true', 'false' or the location of a custom initialization script for the table.
@@ -76,6 +83,25 @@ public class JdbcConsumerProperties {
 
 	public void setColumns(String columns) {
 		this.columns = columns;
+	}
+
+	/**
+	 * Return the SQL statement to execute.
+	 * @return the SQL statement
+	 * @since 6.0.1
+	 */
+	public String getQuery() {
+		return this.query;
+	}
+
+	/**
+	 * Set the SQL statement to execute. An empty or blank value selects generated INSERT
+	 * statements.
+	 * @param query the SQL statement
+	 * @since 6.0.1
+	 */
+	public void setQuery(String query) {
+		this.query = query;
 	}
 
 	public String getInitialize() {
