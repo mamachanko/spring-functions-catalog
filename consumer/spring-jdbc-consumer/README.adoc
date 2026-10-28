@@ -1,7 +1,8 @@
 = JDBC Consumer
 
 A consumer that writes message values to a relational database through Spring Integration's `JdbcMessageHandler`.
-It generates an `INSERT` statement or executes SQL supplied in `jdbc.consumer.query`.
+By default, it generates an `INSERT` statement for each message.
+Set `jdbc.consumer.query` to execute a custom SQL statement, such as an update or an upsert.
 
 == Beans for injection
 
@@ -20,16 +21,16 @@ For example:
 
 [source,properties]
 ----
-jdbc.consumer.columns=id:payload.id,status:payload.status
+jdbc.consumer.columns=id:payload.id,name:payload.name
 ----
 
-For a message with the JSON payload `{"id":"C-17","status":"new"}`, this supplies `id` and `status` values.
-The shorthand `id,status` tries each name as an expression and then as a property of the payload.
-Expressions can also read headers, for example `id:headers['claimId'],status:payload.status`.
+For a message with the JSON payload `{"id":1,"name":"Bob"}`, this supplies `id` and `name` values.
+The shorthand `id,name` tries each name as an expression and then as a property of the payload.
+Expressions can also read headers, for example `id:headers['personId'],name:payload.name`.
 An expression that cannot be resolved supplies SQL `NULL`.
 The default mapping is `payload:payload.toString()`.
 
-== Inserting rows
+== Inserting rows (default)
 
 When `jdbc.consumer.query` is absent, empty, or blank, the consumer generates an `INSERT` statement from `jdbc.consumer.table-name` and `jdbc.consumer.columns`.
 The default table name is `messages`.
@@ -37,11 +38,11 @@ For example:
 
 [source,properties]
 ----
-jdbc.consumer.table-name=claims
-jdbc.consumer.columns=id,status
+jdbc.consumer.table-name=people
+jdbc.consumer.columns=id,name
 ----
 
-This executes `INSERT INTO claims(id, status) VALUES (:id, :status)` for each message.
+This executes `INSERT INTO people(id, name) VALUES (:id, :name)` for each message.
 The table must exist and its column types must accept the mapped values.
 
 == Executing SQL
@@ -56,8 +57,8 @@ For example, this configuration updates a row:
 
 [source,properties]
 ----
-jdbc.consumer.columns=key:headers['claimId'],state:payload.status
-jdbc.consumer.query=UPDATE claims SET status=:state WHERE id=:key
+jdbc.consumer.columns=key:headers['personId'],personName:payload.name
+jdbc.consumer.query=UPDATE people SET name=:personName WHERE id=:key
 ----
 
 If no row matches, the consumer does not insert a row.
@@ -73,18 +74,20 @@ For PostgreSQL, create a table with a primary key or suitable unique constraint:
 
 [source,sql]
 ----
-CREATE TABLE claims (id VARCHAR(40) PRIMARY KEY, status VARCHAR(40));
+CREATE TABLE people (id INTEGER PRIMARY KEY, name VARCHAR(40));
 ----
 
 Then configure:
 
 [source,properties]
 ----
-jdbc.consumer.columns=id,status
-jdbc.consumer.query=INSERT INTO claims (id,status) VALUES (:id,:status) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status
+jdbc.consumer.columns=id,name
+jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name) ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name
 ----
 
-Messages for the same `id` replace the stored status.
+For example, the message `{"id":1,"name":"Bob"}` inserts a person.
+The next message `{"id":1,"name":"Robert"}` changes that person's name to Robert.
+The table contains one row with `id=1` and `name=Robert`.
 
 === MySQL upsert
 
@@ -92,8 +95,8 @@ MySQL uses a different SQL statement for a table with a primary key or unique co
 
 [source,properties]
 ----
-jdbc.consumer.columns=id,status
-jdbc.consumer.query=INSERT INTO claims (id,status) VALUES (:id,:status) ON DUPLICATE KEY UPDATE status=:status
+jdbc.consumer.columns=id,name
+jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name) ON DUPLICATE KEY UPDATE name=:name
 ----
 
 The consumer does not translate SQL between database types.
@@ -117,7 +120,7 @@ Use a database migration or a custom initialization script for an upsert schema.
 == Ordering and repeated messages
 
 The consumer has no built-in event deduplication or version checks.
-An assignment such as `status=:status` can tolerate a repeated message, but an update such as `total=total+:amount` applies the change again.
+An assignment such as `name=:name` can tolerate a repeated message, but an update such as `total=total+:amount` applies the change again.
 A late event can overwrite a newer value unless the SQL checks a version or another ordering field.
 
 The consumer does not coordinate a database commit with acknowledgement by an external message broker.

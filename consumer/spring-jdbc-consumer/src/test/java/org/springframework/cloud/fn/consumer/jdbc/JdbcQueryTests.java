@@ -59,17 +59,19 @@ class JdbcQueryTests {
 
 	@Test
 	void updateUsesNamedParametersFromHeadersAndPayloadWithoutInsertFallback() {
-		this.contextRunner.withPropertyValues("jdbc.consumer.columns=key:headers['key'],state:payload",
-				"jdbc.consumer.table-name=unused", "jdbc.consumer.query=UPDATE claims SET status=:state WHERE id=:key")
+		this.contextRunner
+			.withPropertyValues("jdbc.consumer.columns=key:headers['personId'],personName:payload",
+					"jdbc.consumer.table-name=unused",
+					"jdbc.consumer.query=UPDATE people SET name=:personName WHERE id=:key")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				jdbc.execute("CREATE TABLE claims (id VARCHAR(40) PRIMARY KEY, status VARCHAR(40))");
-				jdbc.update("INSERT INTO claims VALUES (?, ?)", "C-17", "new");
+				jdbc.execute("CREATE TABLE people (id INTEGER PRIMARY KEY, name VARCHAR(40))");
+				jdbc.update("INSERT INTO people VALUES (?, ?)", 1, "Bob");
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(MessageBuilder.withPayload("paid").setHeader("key", "C-17").build());
-				assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("paid");
-				consumer.accept(MessageBuilder.withPayload("missing").setHeader("key", "C-18").build());
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isEqualTo(1);
+				consumer.accept(MessageBuilder.withPayload("Robert").setHeader("personId", 1).build());
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				consumer.accept(MessageBuilder.withPayload("missing").setHeader("personId", 2).build());
+				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			});
 	}
 

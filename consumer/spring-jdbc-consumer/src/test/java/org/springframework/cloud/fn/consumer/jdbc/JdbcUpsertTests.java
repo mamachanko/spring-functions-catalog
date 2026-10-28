@@ -45,8 +45,8 @@ import static org.awaitility.Awaitility.await;
 @SuppressWarnings("unchecked")
 class JdbcUpsertTests {
 
-	private static final String POSTGRES_UPSERT = "INSERT INTO claims (id,status) VALUES (:id,:status) "
-			+ "ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status";
+	private static final String POSTGRES_UPSERT = "INSERT INTO people (id,name) VALUES (:id,:name) "
+			+ "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name";
 
 	@Container
 	private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
@@ -56,23 +56,23 @@ class JdbcUpsertTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withUserConfiguration(JdbcConsumerApplicationTests.JdbcConsumerTestApplication.class)
-		.withPropertyValues("spring.sql.init.mode=never", "jdbc.consumer.columns=id,status");
+		.withPropertyValues("spring.sql.init.mode=never", "jdbc.consumer.columns=id,name");
 
 	@Test
 	void postgresUpsertInsertsUpdatesAndToleratesAssignmentReplay() {
 		postgresRunner().withPropertyValues("jdbc.consumer.query=" + POSTGRES_UPSERT).run((context) -> {
 			JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-			createClaims(jdbc);
+			createPeople(jdbc);
 			Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-			consumer.accept(claim("new"));
-			assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("new");
-			consumer.accept(claim("paid"));
-			consumer.accept(claim("paid"));
-			assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("paid");
-			assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isEqualTo(1);
+			consumer.accept(person("Bob"));
+			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
+			consumer.accept(person("Robert"));
+			consumer.accept(person("Robert"));
+			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+			assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			// No event version check is added: a late event overwrites the current value.
-			consumer.accept(claim("new"));
-			assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("new");
+			consumer.accept(person("Bob"));
+			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
 		});
 	}
 
@@ -81,17 +81,17 @@ class JdbcUpsertTests {
 		postgresRunner().withPropertyValues("jdbc.consumer.batch-size=2", "jdbc.consumer.query=" + POSTGRES_UPSERT)
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				createClaims(jdbc);
+				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(MessageBuilder
-					.withPayload("{\"id\":\"C-17\",\"status\":\"new\"}".getBytes(StandardCharsets.UTF_8))
-					.build());
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isZero();
-				consumer.accept(MessageBuilder
-					.withPayload("{\"id\":\"C-17\",\"status\":\"paid\"}".getBytes(StandardCharsets.UTF_8))
-					.build());
-				assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("paid");
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isEqualTo(1);
+				consumer
+					.accept(MessageBuilder.withPayload("{\"id\":1,\"name\":\"Bob\"}".getBytes(StandardCharsets.UTF_8))
+						.build());
+				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
+				consumer.accept(
+						MessageBuilder.withPayload("{\"id\":1,\"name\":\"Robert\"}".getBytes(StandardCharsets.UTF_8))
+							.build());
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			});
 	}
 
@@ -102,13 +102,13 @@ class JdbcUpsertTests {
 					"jdbc.consumer.query=" + POSTGRES_UPSERT)
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				createClaims(jdbc);
+				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(claim("new"));
+				consumer.accept(person("Bob"));
 				await().atMost(Duration.ofSeconds(10))
-					.untilAsserted(() -> assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class))
+					.untilAsserted(() -> assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class))
 						.isEqualTo(1));
-				assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("new");
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
 			});
 	}
 
@@ -116,12 +116,12 @@ class JdbcUpsertTests {
 	void postgresRequiresConflictConstraint() {
 		postgresRunner().withPropertyValues("jdbc.consumer.query=" + POSTGRES_UPSERT).run((context) -> {
 			JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-			jdbc.execute("DROP TABLE IF EXISTS claims");
-			jdbc.execute("CREATE TABLE claims (id VARCHAR(40), status VARCHAR(40))");
+			jdbc.execute("DROP TABLE IF EXISTS people");
+			jdbc.execute("CREATE TABLE people (id INTEGER, name VARCHAR(40))");
 			Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-			assertThatExceptionOfType(BadSqlGrammarException.class).isThrownBy(() -> consumer.accept(claim("new")))
+			assertThatExceptionOfType(BadSqlGrammarException.class).isThrownBy(() -> consumer.accept(person("Bob")))
 				.withStackTraceContaining("no unique or exclusion constraint");
-			assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isZero();
+			assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
 		});
 	}
 
@@ -133,9 +133,9 @@ class JdbcUpsertTests {
 							+ "ON CONFLICT (id) DO UPDATE SET total=counters.total+EXCLUDED.total")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				jdbc.execute("CREATE TABLE counters (id VARCHAR(40) PRIMARY KEY, total INTEGER)");
+				jdbc.execute("CREATE TABLE counters (id INTEGER PRIMARY KEY, total INTEGER)");
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				Message<?> message = MessageBuilder.withPayload(Map.of("id", "C-17", "increment", 1)).build();
+				Message<?> message = MessageBuilder.withPayload(Map.of("id", 1, "increment", 1)).build();
 				consumer.accept(message);
 				consumer.accept(message);
 				assertThat(jdbc.queryForObject("SELECT total FROM counters", Integer.class)).isEqualTo(2);
@@ -150,17 +150,15 @@ class JdbcUpsertTests {
 						+ "WHERE EXCLUDED.revision>documents.revision")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				jdbc.execute("CREATE TABLE documents (id VARCHAR(40) PRIMARY KEY, revision INTEGER, body JSONB)");
+				jdbc.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, revision INTEGER, body JSONB)");
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				String current = "{\"id\":\"C-17\",\"revision\":2,\"status\":\"paid\"}";
-				consumer
-					.accept(MessageBuilder.withPayload("{\"id\":\"C-17\",\"revision\":1,\"status\":\"new\"}").build());
+				String current = "{\"id\":1,\"revision\":2,\"name\":\"Robert\"}";
+				consumer.accept(MessageBuilder.withPayload("{\"id\":1,\"revision\":1,\"name\":\"Bob\"}").build());
 				consumer.accept(MessageBuilder.withPayload(current).build());
 				consumer.accept(MessageBuilder.withPayload(current).build());
-				consumer
-					.accept(MessageBuilder.withPayload("{\"id\":\"C-17\",\"revision\":1,\"status\":\"new\"}").build());
-				assertThat(jdbc.queryForObject("SELECT body->>'status' FROM documents", String.class))
-					.isEqualTo("paid");
+				consumer.accept(MessageBuilder.withPayload("{\"id\":1,\"revision\":1,\"name\":\"Bob\"}").build());
+				assertThat(jdbc.queryForObject("SELECT body->>'name' FROM documents", String.class))
+					.isEqualTo("Robert");
 				assertThat(jdbc.queryForObject("SELECT revision FROM documents", Integer.class)).isEqualTo(2);
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM documents", Integer.class)).isEqualTo(1);
 			});
@@ -168,15 +166,15 @@ class JdbcUpsertTests {
 
 	@Test
 	void postgresPropagatesConstraintFailures() {
-		postgresRunner().withPropertyValues("jdbc.consumer.query=INSERT INTO claims (id,status) VALUES (:id,:status)")
+		postgresRunner().withPropertyValues("jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name)")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				createClaims(jdbc);
+				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(claim("new"));
+				consumer.accept(person("Bob"));
 				assertThatExceptionOfType(DataIntegrityViolationException.class)
-					.isThrownBy(() -> consumer.accept(claim("paid")));
-				assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("new");
+					.isThrownBy(() -> consumer.accept(person("Robert")));
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
 			});
 	}
 
@@ -187,20 +185,20 @@ class JdbcUpsertTests {
 					"spring.datasource.username=" + MYSQL.getUsername(),
 					"spring.datasource.password=" + MYSQL.getPassword(),
 					"spring.datasource.driver-class-name=org.mariadb.jdbc.Driver", "jdbc.consumer.batch-size=2",
-					"jdbc.consumer.query=INSERT INTO claims (id,status) VALUES (:id,:status) "
-							+ "ON DUPLICATE KEY UPDATE status=:status")
+					"jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name) "
+							+ "ON DUPLICATE KEY UPDATE name=:name")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
-				createClaims(jdbc);
+				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(claim("new"));
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isZero();
-				consumer.accept(claim("paid"));
-				assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("paid");
-				consumer.accept(claim("paid"));
-				consumer.accept(claim("paid"));
-				assertThat(jdbc.queryForObject("SELECT status FROM claims", String.class)).isEqualTo("paid");
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM claims", Integer.class)).isEqualTo(1);
+				consumer.accept(person("Bob"));
+				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
+				consumer.accept(person("Robert"));
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				consumer.accept(person("Robert"));
+				consumer.accept(person("Robert"));
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			});
 	}
 
@@ -210,13 +208,13 @@ class JdbcUpsertTests {
 				"spring.datasource.password=" + POSTGRES.getPassword());
 	}
 
-	private static void createClaims(JdbcTemplate jdbc) {
-		jdbc.execute("DROP TABLE IF EXISTS claims");
-		jdbc.execute("CREATE TABLE claims (id VARCHAR(40) PRIMARY KEY, status VARCHAR(40))");
+	private static void createPeople(JdbcTemplate jdbc) {
+		jdbc.execute("DROP TABLE IF EXISTS people");
+		jdbc.execute("CREATE TABLE people (id INTEGER PRIMARY KEY, name VARCHAR(40))");
 	}
 
-	private static Message<?> claim(String status) {
-		return MessageBuilder.withPayload(Map.of("id", "C-17", "status", status)).build();
+	private static Message<?> person(String name) {
+		return MessageBuilder.withPayload(Map.of("id", 1, "name", name)).build();
 	}
 
 	private static final class MySqlFixture extends MySQLContainer {
