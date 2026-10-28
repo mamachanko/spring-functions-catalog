@@ -57,6 +57,16 @@ public class DebeziumEngineBuilderAutoConfigurationTests {
 	}
 
 	@Test
+	void userBootstrapServersOverrideEmbeddedDefault() {
+		this.contextRunner
+			.withPropertyValues("debezium.properties.connector.class=Dummy",
+					"debezium.properties.bootstrap.servers=broker.example:19092")
+			.run((context) -> assertThat(context.getBean(DebeziumProperties.class)
+				.getDebeziumNativeConfiguration()
+				.getProperty("bootstrap.servers")).isEqualTo("broker.example:19092"));
+	}
+
+	@Test
 	void buildEmbeddedEngineWithoutKafkaBootstrapServers() {
 		this.contextRunner
 			.withPropertyValues("debezium.properties.name=test-engine",

@@ -9,6 +9,17 @@ The `Debezium Engine` is a https://en.wikipedia.org/wiki/Change_data_capture[Cha
 
 The `DebeziumEngine.Builder` auto-configuration is activated only if a https://debezium.io/documentation/reference/stable/connectors/index.html[Debezium Connector] is found on the classpath and the `debezium.properties.connector.class` property is set to point to that connector class.
 
+== Upgrade compatibility
+
+Spring Boot 4.1 uses Spring Integration 7.1.
+This module aligns the embedded Debezium engine and connectors on the 3.5 release line.
+Keep the engine and connector versions aligned when you override dependency management in an application.
+
+https://github.com/apache/kafka/blob/4.2.2/connect/runtime/src/main/java/org/apache/kafka/connect/runtime/WorkerConfig.java[Kafka Connect 4.2] requires `bootstrap.servers` when an embedded engine is constructed, including engines with memory or file offset storage.
+To preserve startup behavior, this module retains Kafka Connect 4.1's default of `localhost:9092`.
+This setting does not start a Kafka broker.
+Set `debezium.properties.bootstrap.servers` to override the default; an explicit application value takes precedence.
+
 == Quick Start
 
 To use the `DebeziumEngine`, set the required <<dependencies>> and <<configuration-options>>, register a custom <<changeEvent-handler>> with the engine and submit later for execution.

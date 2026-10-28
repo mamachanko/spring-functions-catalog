@@ -123,7 +123,9 @@ public class DebeziumProperties {
 	 */
 	public Properties getDebeziumNativeConfiguration() {
 		Properties outProps = new Properties();
-		// Retain Kafka Connect's pre-4.2 default for embedded engines.
+		// Preserve Kafka Connect 4.1's default, removed in 4.2.
+		// Embedded engines validate this setting even with non-Kafka offset storage.
+		// See the upgrade compatibility note in this module's README for the source.
 		outProps.setProperty("bootstrap.servers", "localhost:9092");
 		outProps.putAll(getProperties());
 		return outProps;
