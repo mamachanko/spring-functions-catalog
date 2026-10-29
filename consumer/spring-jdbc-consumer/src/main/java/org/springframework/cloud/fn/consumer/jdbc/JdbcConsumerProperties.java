@@ -36,13 +36,15 @@ public class JdbcConsumerProperties {
 	private ShorthandMapConverter shorthandMapConverter;
 
 	/**
-	 * The name of the table for generated INSERT statements and initialization.
+	 * The table name for generated INSERT statements and built-in schema initialization.
+	 * A configured query specifies its own table name.
 	 */
 	private String tableName = "messages";
 
 	/**
-	 * The comma separated colon-based pairs of SQL parameter names and SpEL expressions.
-	 * Names are used as column names for generated INSERT statements and initialization.
+	 * Comma-separated mappings of SQL parameter names to SpEL expressions, in the form
+	 * name:expression. For generated INSERT statements and built-in schema
+	 * initialization, parameter names are also used as column names.
 	 */
 	private String columns = "payload:payload.toString()";
 

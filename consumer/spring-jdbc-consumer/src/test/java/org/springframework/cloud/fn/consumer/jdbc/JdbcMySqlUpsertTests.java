@@ -46,7 +46,7 @@ class JdbcMySqlUpsertTests {
 		.withPropertyValues("spring.sql.init.mode=never", "jdbc.consumer.columns=id,name");
 
 	@Test
-	void mysqlUpsertInsertsUpdatesAndReplaysInABatch() {
+	void shouldUpsertRepeatedKeysWhenBatchIsFull() {
 		this.contextRunner
 			.withPropertyValues("spring.datasource.url=" + MYSQL.getJdbcUrl(),
 					"spring.datasource.username=" + MYSQL.getUsername(),
@@ -58,13 +58,13 @@ class JdbcMySqlUpsertTests {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(person("Bob"));
+				consumer.accept(person("Josiah"));
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
-				consumer.accept(person("Robert"));
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
-				consumer.accept(person("Robert"));
-				consumer.accept(person("Robert"));
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				consumer.accept(person("Josiah Imani"));
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah Imani");
+				consumer.accept(person("Josiah Imani"));
+				consumer.accept(person("Josiah Imani"));
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah Imani");
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			});
 	}

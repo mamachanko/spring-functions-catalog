@@ -55,44 +55,44 @@ class JdbcUpsertTests {
 		.withPropertyValues("spring.sql.init.mode=never", "jdbc.consumer.columns=id,name");
 
 	@Test
-	void postgresUpsertInsertsUpdatesAndToleratesAssignmentReplay() {
+	void shouldKeepOnePersonWhenAnUpsertIsReplayed() {
 		postgresRunner().withPropertyValues("jdbc.consumer.query=" + POSTGRES_UPSERT).run((context) -> {
 			JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 			createPeople(jdbc);
 			Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-			consumer.accept(person("Bob"));
-			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
-			consumer.accept(person("Robert"));
-			consumer.accept(person("Robert"));
-			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+			consumer.accept(person("Josiah"));
+			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah");
+			consumer.accept(person("Josiah Imani"));
+			consumer.accept(person("Josiah Imani"));
+			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah Imani");
 			assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			// No event version check is added: a late event overwrites the current value.
-			consumer.accept(person("Bob"));
-			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
+			consumer.accept(person("Josiah"));
+			assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah");
 		});
 	}
 
 	@Test
-	void postgresUpsertUsesJsonBytePayloadAndCountBatching() {
+	void shouldWriteJsonBytePayloadsWhenBatchIsFull() {
 		postgresRunner().withPropertyValues("jdbc.consumer.batch-size=2", "jdbc.consumer.query=" + POSTGRES_UPSERT)
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer
-					.accept(MessageBuilder.withPayload("{\"id\":1,\"name\":\"Bob\"}".getBytes(StandardCharsets.UTF_8))
-						.build());
-				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
 				consumer.accept(
-						MessageBuilder.withPayload("{\"id\":1,\"name\":\"Robert\"}".getBytes(StandardCharsets.UTF_8))
+						MessageBuilder.withPayload("{\"id\":1,\"name\":\"Josiah\"}".getBytes(StandardCharsets.UTF_8))
 							.build());
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
+				consumer.accept(MessageBuilder
+					.withPayload("{\"id\":1,\"name\":\"Josiah Imani\"}".getBytes(StandardCharsets.UTF_8))
+					.build());
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah Imani");
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			});
 	}
 
 	@Test
-	void postgresUpsertFlushesPartialBatchOnIdleTimeout() {
+	void shouldWritePartialBatchWhenIdleTimeoutExpires() {
 		postgresRunner()
 			.withPropertyValues("jdbc.consumer.batch-size=10", "jdbc.consumer.idle-timeout=100",
 					"jdbc.consumer.query=" + POSTGRES_UPSERT)
@@ -100,29 +100,29 @@ class JdbcUpsertTests {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(person("Bob"));
+				consumer.accept(person("Josiah"));
 				await().atMost(Duration.ofSeconds(10))
 					.untilAsserted(() -> assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class))
 						.isEqualTo(1));
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah");
 			});
 	}
 
 	@Test
-	void postgresRequiresConflictConstraint() {
+	void shouldRejectUpsertWhenConflictKeyHasNoUniqueConstraint() {
 		postgresRunner().withPropertyValues("jdbc.consumer.query=" + POSTGRES_UPSERT).run((context) -> {
 			JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 			jdbc.execute("DROP TABLE IF EXISTS people");
 			jdbc.execute("CREATE TABLE people (id INTEGER, name VARCHAR(40))");
 			Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-			assertThatExceptionOfType(BadSqlGrammarException.class).isThrownBy(() -> consumer.accept(person("Bob")))
+			assertThatExceptionOfType(BadSqlGrammarException.class).isThrownBy(() -> consumer.accept(person("Josiah")))
 				.withStackTraceContaining("no unique or exclusion constraint");
 			assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isZero();
 		});
 	}
 
 	@Test
-	void postgresDoesNotDeduplicateNonIdempotentUpdates() {
+	void shouldApplyIncrementAgainWhenMessageIsReplayed() {
 		postgresRunner()
 			.withPropertyValues("jdbc.consumer.columns=id,increment:payload.increment",
 					"jdbc.consumer.query=INSERT INTO counters (id,total) VALUES (:id,:increment) "
@@ -139,7 +139,7 @@ class JdbcUpsertTests {
 	}
 
 	@Test
-	void postgresQueryCanStoreJsonAndRejectOldVersions() {
+	void shouldKeepNewestJsonDocumentWhenQueryChecksRevision() {
 		postgresRunner().withPropertyValues("jdbc.consumer.columns=id,revision,body:payload",
 				"jdbc.consumer.query=INSERT INTO documents (id,revision,body) VALUES (:id,:revision,CAST(:body AS jsonb)) "
 						+ "ON CONFLICT (id) DO UPDATE SET revision=EXCLUDED.revision,body=EXCLUDED.body "
@@ -148,29 +148,29 @@ class JdbcUpsertTests {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				jdbc.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, revision INTEGER, body JSONB)");
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				String current = "{\"id\":1,\"revision\":2,\"name\":\"Robert\"}";
-				consumer.accept(MessageBuilder.withPayload("{\"id\":1,\"revision\":1,\"name\":\"Bob\"}").build());
+				String current = "{\"id\":1,\"revision\":2,\"name\":\"Josiah Imani\"}";
+				consumer.accept(MessageBuilder.withPayload("{\"id\":1,\"revision\":1,\"name\":\"Josiah\"}").build());
 				consumer.accept(MessageBuilder.withPayload(current).build());
 				consumer.accept(MessageBuilder.withPayload(current).build());
-				consumer.accept(MessageBuilder.withPayload("{\"id\":1,\"revision\":1,\"name\":\"Bob\"}").build());
+				consumer.accept(MessageBuilder.withPayload("{\"id\":1,\"revision\":1,\"name\":\"Josiah\"}").build());
 				assertThat(jdbc.queryForObject("SELECT body->>'name' FROM documents", String.class))
-					.isEqualTo("Robert");
+					.isEqualTo("Josiah Imani");
 				assertThat(jdbc.queryForObject("SELECT revision FROM documents", Integer.class)).isEqualTo(2);
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM documents", Integer.class)).isEqualTo(1);
 			});
 	}
 
 	@Test
-	void postgresPropagatesConstraintFailures() {
+	void shouldPropagateFailureWhenInsertViolatesUniqueConstraint() {
 		postgresRunner().withPropertyValues("jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name)")
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				createPeople(jdbc);
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(person("Bob"));
+				consumer.accept(person("Josiah"));
 				assertThatExceptionOfType(DataIntegrityViolationException.class)
-					.isThrownBy(() -> consumer.accept(person("Robert")));
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Bob");
+					.isThrownBy(() -> consumer.accept(person("Josiah Imani")));
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah");
 			});
 	}
 

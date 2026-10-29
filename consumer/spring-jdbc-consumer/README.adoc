@@ -24,7 +24,7 @@ For example:
 jdbc.consumer.columns=id:payload.id,name:payload.name
 ----
 
-For a message with the JSON payload `{"id":1,"name":"Bob"}`, this supplies `id` and `name` values.
+For a message with the JSON payload `{"id":1,"name":"Josiah"}`, this supplies `id` and `name` values.
 The shorthand `id,name` tries each name as an expression and then as a property of the payload.
 Expressions can also read headers, for example `id:headers['personId'],name:payload.name`.
 An expression that cannot be resolved supplies SQL `NULL`.
@@ -47,6 +47,7 @@ The table must exist and its column types must accept the mapped values.
 
 == Executing SQL
 
+If you want to update existing rows instead of inserting a new row for each message, use a custom SQL statement.
 Set `jdbc.consumer.query` to a SQL write statement with named parameters.
 Each named parameter must have a mapping in `jdbc.consumer.columns`.
 The mapped values are bound as parameters; they are not substituted into the SQL text.
@@ -67,7 +68,7 @@ Database and parameter-binding failures during a synchronous write propagate to 
 An idle-timeout flush runs asynchronously; its errors do not return to an earlier consumer call.
 With the default scheduler configuration, these errors are logged.
 
-=== PostgreSQL upsert
+=== Example: PostgreSQL upsert
 
 An upsert inserts a row when its key is missing and updates a row when its key exists.
 The database selects the action in one statement.
@@ -86,11 +87,11 @@ jdbc.consumer.columns=id,name
 jdbc.consumer.query=INSERT INTO people (id,name) VALUES (:id,:name) ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name
 ----
 
-For example, the message `{"id":1,"name":"Bob"}` inserts a person.
-The next message `{"id":1,"name":"Robert"}` changes that person's name to Robert.
-The table contains one row with `id=1` and `name=Robert`.
+For example, the message `{"id":1,"name":"Josiah"}` inserts a person.
+The next message `{"id":1,"name":"Josiah Imani"}` updates the same row with the full name Josiah Imani.
+The table contains one row with `id=1` and `name='Josiah Imani'`.
 
-=== MySQL upsert
+=== Example: MySQL upsert
 
 MySQL uses a different SQL statement for a table with a primary key or unique constraint:
 

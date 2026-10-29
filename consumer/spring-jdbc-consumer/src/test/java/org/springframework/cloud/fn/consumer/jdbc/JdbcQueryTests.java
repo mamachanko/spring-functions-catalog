@@ -50,7 +50,7 @@ class JdbcQueryTests {
 
 	@ParameterizedTest
 	@ValueSource(strings = { "", "   " })
-	void blankQueryGeneratesInsert(String query) {
+	void shouldGenerateInsertWhenQueryIsBlank(String query) {
 		// String property pairs trim whitespace; use a map to retain the blank query.
 		this.contextRunner.withPropertyValues("jdbc.consumer.initialize=true")
 			.withInitializer((context) -> TestPropertyValues.of(Map.of("jdbc.consumer.query", query)).applyTo(context))
@@ -64,7 +64,7 @@ class JdbcQueryTests {
 	}
 
 	@Test
-	void updateUsesNamedParametersFromHeadersAndPayloadWithoutInsertFallback() {
+	void shouldUpdateMatchingRowWithoutInsertingMissingRows() {
 		this.contextRunner.withPropertyValues("jdbc.consumer.columns=key:headers['personId'],personName:payload",
 				// Configured SQL selects its table independently of table-name.
 				"jdbc.consumer.table-name=unused",
@@ -72,17 +72,17 @@ class JdbcQueryTests {
 			.run((context) -> {
 				JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
 				jdbc.execute("CREATE TABLE people (id INTEGER PRIMARY KEY, name VARCHAR(40))");
-				jdbc.update("INSERT INTO people VALUES (?, ?)", 1, "Bob");
+				jdbc.update("INSERT INTO people VALUES (?, ?)", 1, "Josiah");
 				Consumer<Message<?>> consumer = context.getBean("jdbcConsumer", Consumer.class);
-				consumer.accept(MessageBuilder.withPayload("Robert").setHeader("personId", 1).build());
-				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Robert");
+				consumer.accept(MessageBuilder.withPayload("Josiah Imani").setHeader("personId", 1).build());
+				assertThat(jdbc.queryForObject("SELECT name FROM people", String.class)).isEqualTo("Josiah Imani");
 				consumer.accept(MessageBuilder.withPayload("missing").setHeader("personId", 2).build());
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM people", Integer.class)).isEqualTo(1);
 			});
 	}
 
 	@Test
-	void unmappedParameterPropagatesFailure() {
+	void shouldPropagateFailureWhenQueryParameterHasNoMapping() {
 		this.contextRunner
 			.withPropertyValues("jdbc.consumer.initialize=true",
 					"jdbc.consumer.query=INSERT INTO messages (payload) VALUES (:missing)")
@@ -98,7 +98,7 @@ class JdbcQueryTests {
 
 	@Test
 	@ExtendWith(OutputCaptureExtension.class)
-	void idleTimeoutWriteFailureIsLogged(CapturedOutput output) {
+	void shouldLogWriteFailureWhenIdleTimeoutFlushesBatch(CapturedOutput output) {
 		this.contextRunner
 			.withPropertyValues("jdbc.consumer.initialize=true", "jdbc.consumer.batch-size=10",
 					"jdbc.consumer.idle-timeout=100",
