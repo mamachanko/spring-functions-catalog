@@ -115,7 +115,7 @@ public class ComputerVisionFunctionConfigurationTests {
 
 	@Test
 	@DisabledOnOs(OS.WINDOWS)
-	public void yolov8Detection() {
+	public void shouldDetectObjectsWhenDjlAutoConfigurationIsDiscovered() {
 		new ApplicationContextRunner().withUserConfiguration(TestApplication.class).withPropertyValues(
 		// @formatter:off
 					"computer.vision.function.augment-enabled=true",
