@@ -57,7 +57,7 @@ public class DebeziumEngineBuilderAutoConfigurationTests {
 	}
 
 	@Test
-	void userBootstrapServersOverrideEmbeddedDefault() {
+	void shouldUseConfiguredBootstrapServersWhenApplicationOverridesDefault() {
 		this.contextRunner
 			.withPropertyValues("debezium.properties.connector.class=Dummy",
 					"debezium.properties.bootstrap.servers=broker.example:19092")
@@ -67,7 +67,7 @@ public class DebeziumEngineBuilderAutoConfigurationTests {
 	}
 
 	@Test
-	void buildEmbeddedEngineWithoutKafkaBootstrapServers() {
+	void shouldBuildEmbeddedEngineWhenBootstrapServersAreNotConfigured() {
 		this.contextRunner
 			.withPropertyValues("debezium.properties.name=test-engine",
 					"debezium.properties.connector.class=io.debezium.connector.mysql.MySqlConnector",
