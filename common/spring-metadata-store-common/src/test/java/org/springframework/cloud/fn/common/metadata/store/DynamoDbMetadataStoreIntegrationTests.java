@@ -49,7 +49,7 @@ public class DynamoDbMetadataStoreIntegrationTests {
 
 	@Test
 	@Timeout(60)
-	void metadataOperations() {
+	void shouldStoreAndConditionallyUpdateMetadataWhenUsingDynamoDb() {
 		String table = "sfc-metadata-" + UUID.randomUUID();
 		new ApplicationContextRunner().withUserConfiguration(TestApplication.class)
 			.withClassLoader(new FilteredClassLoader("com.hazelcast", "org.apache.curator",

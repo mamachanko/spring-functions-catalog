@@ -57,7 +57,7 @@ public class AwsS3SupplierIntegrationTests {
 	@Test
 	@Timeout(60)
 	@SuppressWarnings("unchecked")
-	void downloadAndFilterDuplicates(@TempDir Path directory) {
+	void shouldEmitFileContentsOnceWhenObjectIsDownloaded(@TempDir Path directory) {
 		String bucket = "sfc-supplier-" + UUID.randomUUID();
 		contextRunner(bucket).withPropertyValues("s3.supplier.local-dir=" + directory).run((context) -> {
 			assertThat(context).hasNotFailed();
@@ -80,7 +80,7 @@ public class AwsS3SupplierIntegrationTests {
 	@Test
 	@Timeout(60)
 	@SuppressWarnings("unchecked")
-	void listObjectsAsJson() {
+	void shouldEmitObjectMetadataAsJsonWhenListOnlyIsEnabled() {
 		String bucket = "sfc-list-" + UUID.randomUUID();
 		contextRunner(bucket).withPropertyValues("s3.supplier.list-only=true").run((context) -> {
 			assertThat(context).hasNotFailed();

@@ -54,7 +54,7 @@ public class AwsS3ConsumerIntegrationTests {
 	@Test
 	@Timeout(60)
 	@SuppressWarnings("unchecked")
-	void uploadInputStream() {
+	void shouldUploadInputStreamWhenConsumerReceivesMessage() {
 		String bucket = "sfc-consumer-" + UUID.randomUUID();
 		new ApplicationContextRunner().withUserConfiguration(TestApplication.class)
 			.withPropertyValues(MOTO_CONTAINER.awsProperties())
