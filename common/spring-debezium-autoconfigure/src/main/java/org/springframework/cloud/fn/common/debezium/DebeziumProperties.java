@@ -124,8 +124,8 @@ public class DebeziumProperties {
 	public Properties getDebeziumNativeConfiguration() {
 		Properties outProps = new Properties();
 		outProps.putAll(getProperties());
-		// Kafka Connect 4.2 requires this setting even with non-Kafka offset storage.
-		// Preserve its previous default; see the compatibility note in the README.
+		// Kafka Connect 4.2 dropped its 'localhost:9092' default but still requires the
+		// setting.
 		outProps.putIfAbsent("bootstrap.servers", "localhost:9092");
 		return outProps;
 	}
