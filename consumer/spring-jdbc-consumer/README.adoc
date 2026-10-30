@@ -140,8 +140,8 @@ See link:src/main/java/org/springframework/cloud/fn/consumer/jdbc/JdbcConsumerPr
 
 == Tests
 
-The link:src/test/java/org/springframework/cloud/fn/consumer/jdbc[test suite] covers generated inserts, configured SQL, and PostgreSQL and MySQL upserts.
-The upsert tests use Docker and run with the module's `check` task.
+The link:src/test/java/org/springframework/cloud/fn/consumer/jdbc[test suite] covers generated inserts and configured SQL, including PostgreSQL and MySQL.
+The PostgreSQL and MySQL tests use Docker and run with the module's `check` task.
 They are skipped when Docker is unavailable:
 
 [source,bash]

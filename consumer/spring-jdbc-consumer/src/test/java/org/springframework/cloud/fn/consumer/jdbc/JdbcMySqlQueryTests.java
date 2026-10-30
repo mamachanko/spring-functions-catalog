@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SuppressWarnings("unchecked")
-class JdbcMySqlUpsertTests {
+class JdbcMySqlQueryTests {
 
 	@Container
 	private static final MySQLContainer MYSQL = new MySqlFixture();
@@ -78,7 +78,9 @@ class JdbcMySqlUpsertTests {
 		return MessageBuilder.withPayload(Map.of("id", 1, "name", name)).build();
 	}
 
-	// Use the module's MariaDB driver with the MySQL JDBC URL supplied by the container.
+	// The module ships the MariaDB driver and no MySQL Connector/J. Use it with the MySQL
+	// JDBC URL
+	// supplied by the container.
 	private static final class MySqlFixture extends MySQLContainer {
 
 		private MySqlFixture() {

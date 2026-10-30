@@ -42,7 +42,7 @@ import static org.awaitility.Awaitility.await;
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SuppressWarnings("unchecked")
-class JdbcUpsertTests {
+class JdbcPostgreSqlQueryTests {
 
 	private static final String POSTGRES_UPSERT = "INSERT INTO people (id,name) VALUES (:id,:name) "
 			+ "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name";
